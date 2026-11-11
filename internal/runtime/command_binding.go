@@ -89,15 +89,13 @@ func bindCommand(sandbox Sandbox, workspace string, command CommandSpec, credent
 			args = append(args, config...)
 			bound.Argv = append(args, bound.Argv[len(bound.Argv)-1])
 		case BindClaudeCode:
-			bound.environment["ANTHROPIC_API_KEY"] = strings.TrimSpace(credentials.ClaudeCode.APIKey)
-			if bound.environment["ANTHROPIC_API_KEY"] == "" {
+			env := ClaudeCodeEnv(credentials.ClaudeCode.APIKey, credentials.ClaudeCode.BaseURL)
+			if env == nil {
 				return CommandSpec{}, fmt.Errorf("需求责任人未配置 Claude Code API Key，请在个人配置中配置")
 			}
-			baseURL := strings.TrimSpace(credentials.ClaudeCode.BaseURL)
-			if baseURL == "" {
-				baseURL = "https://api.anthropic.com"
+			for key, value := range env {
+				bound.environment[key] = value
 			}
-			bound.environment["ANTHROPIC_BASE_URL"] = baseURL
 		case BindAgentCLI:
 			home, homeEnv := privateHomePaths(sandbox, workspace, command)
 			if !command.PrivateHome {
@@ -298,4 +296,26 @@ func writeGitAskPass(workspace, path string) error {
 		return fmt.Errorf("write git askpass: %w", err)
 	}
 	return nil
+}
+
+// ClaudeCodeEnv maps a personal Claude Code credential to the CLI's
+// environment. A Claude subscription token from `claude setup-token`
+// (sk-ant-oat…) authenticates through CLAUDE_CODE_OAUTH_TOKEN; it is not an
+// API key and must not be sent as one. Returns nil when no key is set.
+func ClaudeCodeEnv(key, baseURL string) map[string]string {
+	key, baseURL = strings.TrimSpace(key), strings.TrimSpace(baseURL)
+	if key == "" {
+		return nil
+	}
+	if strings.HasPrefix(key, "sk-ant-oat") {
+		env := map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": key}
+		if baseURL != "" {
+			env["ANTHROPIC_BASE_URL"] = baseURL
+		}
+		return env
+	}
+	if baseURL == "" {
+		baseURL = "https://api.anthropic.com"
+	}
+	return map[string]string{"ANTHROPIC_API_KEY": key, "ANTHROPIC_BASE_URL": baseURL}
 }

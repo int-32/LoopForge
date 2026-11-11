@@ -9,12 +9,14 @@ type BotChat struct {
 	LastMessageTime string `json:"lastMessageTime,omitempty"`
 }
 type NotificationBot struct {
-	ID                 string     `json:"id"`
-	ProjectID          string     `json:"projectId"`
-	OwnerID            int64      `json:"ownerId"`
-	Model              string     `json:"model,omitempty"`
-	Name               string     `json:"name"`
-	BotID              string     `json:"botId"`
+	ID        string `json:"id"`
+	ProjectID string `json:"projectId"`
+	OwnerID   int64  `json:"ownerId"`
+	Model     string `json:"model,omitempty"`
+	Name      string `json:"name"`
+	BotID     string `json:"botId"`
+	// Platform is "slack" for Slack apps; empty means enterprise WeChat.
+	Platform           string     `json:"platform,omitempty"`
 	InteractionEnabled bool       `json:"interactionEnabled"`
 	Enabled            bool       `json:"enabled"`
 	SecretConfigured   bool       `json:"secretConfigured"`

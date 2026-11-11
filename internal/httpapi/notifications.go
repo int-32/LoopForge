@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"agentflow/internal/botinteraction"
 	"agentflow/internal/domain"
 	"agentflow/internal/notification"
 	"agentflow/internal/repo"
@@ -157,7 +158,12 @@ func (h *notificationHandlers) save(c *gin.Context, old *domain.NotificationBot)
 		if model == "" {
 			model = domain.DefaultNotificationReportModel
 		}
-		if assistantAllowedModel(model, assistantKnownCatalog()) != model {
+		if engine, rest := assistantModelEngine(model); engine != assistantEngineCodeBuddy {
+			if rest == "" {
+				c.JSON(400, gin.H{"error": "请填写有效的模型"})
+				return
+			}
+		} else if assistantAllowedModel(model, assistantKnownCatalog()) != model {
 			c.JSON(400, gin.H{"error": "请选择有效的 CodeBuddy 模型"})
 			return
 		}
@@ -179,6 +185,10 @@ func (h *notificationHandlers) save(c *gin.Context, old *domain.NotificationBot)
 		}
 	}
 	if req.Secret != "" {
+		bot.Platform = ""
+		if botinteraction.IsSlackSecret(req.Secret) {
+			bot.Platform = botinteraction.PlatformSlack
+		}
 		bot.SecretConfigured = true
 		bot.Health = "unchecked"
 		bot.LastCheckedAt = nil
@@ -196,7 +206,7 @@ func (h *notificationHandlers) save(c *gin.Context, old *domain.NotificationBot)
 		}
 		for _, existing := range bots {
 			if existing.BotID == bot.BotID && existing.ID != bot.ID && bot.Enabled {
-				c.JSON(409, gin.H{"error": "这只企业微信 Bot 已在另一个配置中启用对话，请复用原配置"})
+				c.JSON(409, gin.H{"error": "这只 Bot 已在另一个配置中启用对话，请复用原配置"})
 				return
 			}
 		}
