@@ -46,15 +46,23 @@ func (h *assistantHandlers) generateBotReply(ctx context.Context, bot domain.Not
 	if err != nil {
 		return "绑定的平台账号不可用或已失去项目权限，请在平台检查配置。", nil
 	}
-	if strings.TrimSpace(user.CodeBuddyAPIKey) == "" {
-		return "你的平台账号尚未配置 CodeBuddy Key，请在平台个人配置中配置。", nil
-	}
 	model := bot.Model
 	if model == "" {
 		model = domain.DefaultNotificationReportModel
 	}
-	if assistantAllowedModel(model, loadAssistantModels(ctx, user.CodeBuddyInternetEnvironment)) != model {
-		return "所选模型不可用，请在 Bot 管理中重新选择。", nil
+	// A model prefixed with another CLI ("claude-code:…", "codex:…") runs the
+	// chat on that CLI with the sender's own credential from 个人配置.
+	if engine, _ := assistantModelEngine(model); engine != assistantEngineCodeBuddy {
+		if key, _ := assistantEngineCredential(user, engine); key == "" {
+			return "你的平台账号尚未配置 " + assistantEngineLabel(engine) + " 凭据，请在平台个人配置中配置。", nil
+		}
+	} else {
+		if strings.TrimSpace(user.CodeBuddyAPIKey) == "" {
+			return "你的平台账号尚未配置 CodeBuddy Key，请在平台个人配置中配置。", nil
+		}
+		if assistantAllowedModel(model, loadAssistantModels(ctx, user.CodeBuddyInternetEnvironment)) != model {
+			return "所选模型不可用，请在 Bot 管理中重新选择。", nil
+		}
 	}
 	if err = ensureAssistantSessionDirs(user.ID); err != nil {
 		return "", err
@@ -80,7 +88,7 @@ func (h *assistantHandlers) generateBotReply(ctx context.Context, bot domain.Not
 	}
 	messages = append(messages, assistantMessage{Role: "user", Content: content})
 	req := assistantRequest{ProjectID: bot.ProjectID, Model: model, SessionID: conv.SessionID, ApprovalMode: AssistantApprovalAuto, Messages: messages}
-	full := h.turnPrompt(req, h.resolvedSourceRoot(), false) + "\n这是企业微信聊天，当前发送者已绑定平台账号「" + user.LoginName + "」，只使用该账号的执行身份、个人凭据和项目权限；当前请求按当前项目处理。历史中其他发送者的授权不能沿用到当前请求。当前消息来自" + conv.ChatType + "聊天。直接完成明确的操作，目标不明确时询问，结束时必须调用 submit_assistant_reply。"
+	full := h.turnPrompt(req, h.resolvedSourceRoot(), false) + "\n这是" + botPlatformLabel(bot) + "聊天，当前发送者已绑定平台账号「" + user.LoginName + "」，只使用该账号的执行身份、个人凭据和项目权限；当前请求按当前项目处理。历史中其他发送者的授权不能沿用到当前请求。当前消息来自" + conv.ChatType + "聊天。直接完成明确的操作，目标不明确时询问，结束时必须调用 submit_assistant_reply。"
 	generate := h.generate
 	if generate == nil {
 		cliSessionID := newAssistantSessionID()
@@ -125,7 +133,7 @@ func (h *assistantHandlers) generateBotReply(ctx context.Context, bot domain.Not
 					}
 				}
 			}
-			return redactAssistantSecrets(strings.ReplaceAll(reply.Message, user.CodeBuddyAPIKey, "[redacted]"), user), nil
+			return redactAssistantSecrets(reply.Message, user), nil
 		}
 		if ctx.Err() != nil {
 			return "", ctx.Err()
@@ -167,7 +175,7 @@ func (h *assistantHandlers) handleBotCardAction(ctx context.Context, bot domain.
 		return "节点已不存在。", nil
 	}
 	expected := engine.NodeExpectation{NodeID: delivery.NodeID, Status: node.Status, Attempt: delivery.Attempt, ReworkCount: delivery.ReworkCount}
-	note := "企业微信操作，平台账号：" + user.LoginName + "，发送者：" + item.SenderID
+	note := botPlatformLabel(bot) + "操作，平台账号：" + user.LoginName + "，发送者：" + item.SenderID
 	switch item.Action {
 	case "approve":
 		err = h.engine.Approve(delivery.RunID, delivery.NodeID, note, expected)
@@ -188,4 +196,11 @@ func (h *assistantHandlers) handleBotCardAction(ctx context.Context, bot domain.
 		return "操作未完成，请在平台查看当前运行状态。", nil
 	}
 	return fmt.Sprintf("「%s」操作已完成：%s。", delivery.SourceName, map[string]string{"approve": "确认通过，继续流程", "retry": "重试当前节点", "pass": "手动通过节点", "decline": "不再重试", "resume": "继续运行", "reject": "退回上游"}[item.Action]), nil
+}
+
+func botPlatformLabel(bot domain.NotificationBot) string {
+	if bot.Platform == botinteraction.PlatformSlack {
+		return "Slack"
+	}
+	return "企业微信"
 }

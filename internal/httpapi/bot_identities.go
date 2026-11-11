@@ -115,7 +115,7 @@ func (h *botIdentityHandlers) message(bot domain.NotificationBot, item domain.Bo
 	if text == "/unbind" || text == "解除绑定" {
 		binding, err := h.repo.BotUserBinding(bot.BotID, item.SenderID)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return true, "当前企微账号尚未绑定平台账号。发送“绑定账号”可进行关联。", nil
+			return true, "当前聊天账号尚未绑定平台账号。发送“绑定账号”可进行关联。", nil
 		}
 		if err != nil {
 			return true, "", err
@@ -123,7 +123,7 @@ func (h *botIdentityHandlers) message(bot domain.NotificationBot, item domain.Bo
 		if err := h.repo.RevokeBotUserBinding(binding.ID, binding.UserID, time.Now().UTC()); err != nil {
 			return true, "", err
 		}
-		return true, "已解除当前企微账号与平台账号的绑定，旧确认码已失效。需要重新关联时，请发送“绑定账号”。", nil
+		return true, "已解除当前聊天账号与平台账号的绑定，旧确认码已失效。需要重新关联时，请发送“绑定账号”。", nil
 	}
 
 	if strings.HasPrefix(text, "/bind ") {

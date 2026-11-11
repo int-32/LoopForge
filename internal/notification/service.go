@@ -38,7 +38,12 @@ func (s *Service) Sessions(ctx context.Context, bot domain.NotificationBot) ([]d
 	if err != nil {
 		return nil, err
 	}
-	chats, err := s.Provider.Sessions(ctx, bot.BotID, secret)
+	var chats []domain.BotChat
+	if bot.Platform == botinteraction.PlatformSlack {
+		chats, err = botinteraction.SlackSessions(ctx, s.slackAPI(), secret)
+	} else {
+		chats, err = s.Provider.Sessions(ctx, bot.BotID, secret)
+	}
 	health := "ready"
 	if err != nil {
 		health = "error"
@@ -93,7 +98,16 @@ func (s *Service) send(ctx context.Context, bot domain.NotificationBot, targetID
 		}
 		return s.Interactions.QueueNotificationCard(ctx, bot, delivery[0], content, detailURL)
 	}
+	if bot.Platform == botinteraction.PlatformSlack {
+		return botinteraction.SlackSend(ctx, s.slackAPI(), secret, targetID, content)
+	}
 	return s.Provider.Send(ctx, bot.BotID, secret, targetID, content)
+}
+func (s *Service) slackAPI() string {
+	if s.Interactions != nil {
+		return s.Interactions.SlackAPI
+	}
+	return ""
 }
 func (s *Service) Start(ctx context.Context) {
 	if s.Interactions != nil {

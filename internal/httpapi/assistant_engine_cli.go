@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,6 +93,22 @@ func resolveAssistantEngineBin(engine string) (string, error) {
 		}
 	}
 	return "", assistantCLIMissingError{engine: engine, binary: binary}
+}
+
+// resolveAssistantRunBin is resolveAssistantEngineBin for a chat turn.
+// Claude Code is not bundled with the platform, so a missing claude installs
+// the pinned release on first use, as SOP roles already do.
+func resolveAssistantRunBin(ctx context.Context, engine string) (string, error) {
+	bin, err := resolveAssistantEngineBin(engine)
+	if err == nil || engine != assistantEngineClaude {
+		return bin, err
+	}
+	installed, installErr := runtime.EnsureClaudeCode(ctx)
+	if installErr != nil {
+		log.Printf("assistant Claude Code install failed: %v", installErr)
+		return "", err
+	}
+	return installed, nil
 }
 
 var errAssistantCLIMissing = errors.New("assistant CLI not installed")

@@ -18,14 +18,17 @@ import (
 type Generate func(context.Context, domain.NotificationBot, domain.BotConversation, []domain.BotInteraction, domain.BotInteraction) (string, error)
 type Action func(context.Context, domain.NotificationBot, domain.BotInteraction, domain.BotConversation) (string, error)
 type Service struct {
-	Store    *repo.Store
-	Generate Generate
-	Action   Action
-	URL      string
-	mu       sync.Mutex
-	running  map[string]*connection
-	Done     chan struct{}
-	start    sync.Once
+	Store *repo.Store
+	// SlackAPI overrides the Slack Web API base URL (tests).
+	SlackAPI     string
+	slackPending sync.Map
+	Generate     Generate
+	Action       Action
+	URL          string
+	mu           sync.Mutex
+	running      map[string]*connection
+	Done         chan struct{}
+	start        sync.Once
 }
 type connection struct {
 	bot    domain.NotificationBot
@@ -120,7 +123,14 @@ func (s *Service) reconcile(ctx context.Context) {
 		child, cancel := context.WithCancel(ctx)
 		c := &connection{bot: b, cancel: cancel, done: make(chan struct{})}
 		s.running[id] = c
-		go func() { defer close(c.done); s.run(child, c) }()
+		go func() {
+			defer close(c.done)
+			if c.bot.Platform == PlatformSlack {
+				s.runSlack(child, c)
+				return
+			}
+			s.run(child, c)
+		}()
 	}
 }
 func (s *Service) run(ctx context.Context, c *connection) {
